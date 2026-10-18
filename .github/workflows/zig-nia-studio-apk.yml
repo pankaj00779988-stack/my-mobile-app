@@ -1,0 +1,79 @@
+name: Zig and Nia Studio APK download
+on:
+  workflow_dispatch:
+    inputs:
+      blob_sha:
+        description: Reviewed standalone APK Git blob SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: zig-nia-studio-apk-0-1-0
+  cancel-in-progress: false
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APK_BLOB: ${{ inputs.blob_sha }}
+    steps:
+      - name: Fetch and verify the separately signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os,re
+          assert re.fullmatch(r'[0-9a-f]{40}',os.environ['APK_BLOB']), 'Invalid APK blob'
+          assert os.environ['GITHUB_REPOSITORY']=='pankaj00779988-stack/my-mobile-app'
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/git/blobs/$APK_BLOB" > apk-blob.json
+          python3 - <<'PY'
+          import base64,hashlib,json,zipfile,io
+          from pathlib import Path
+          data=json.loads(Path('apk-blob.json').read_text())
+          raw=base64.b64decode(data['content'])
+          expected='91af822cc904f7069185f2d044171adc4bd395b833985110ebe825cde2e5b319'
+          assert len(raw)==7413533 and hashlib.sha256(raw).hexdigest()==expected, 'APK differs from reviewed build'
+          with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+              assert archive.testzip() is None
+              assert 'classes.dex' in archive.namelist() and 'AndroidManifest.xml' in archive.namelist()
+              assert not any(n.endswith(('.jks','.p12','signing.properties')) for n in archive.namelist())
+              config=json.loads(archive.read('assets/studio/library/library.json'))
+              assert config['version']=='0.5.0'
+              for asset in config['assets']:
+                  art=archive.read('assets/studio/library/'+asset['fileName'])
+                  assert len(art)==asset['bytes'] and hashlib.sha256(art).hexdigest()==asset['sha256']
+          name='ZigNiaStudio-0.1.0.apk'
+          Path(name).write_bytes(raw)
+          Path(name+'.sha256').write_text(expected+'  '+name+'\n')
+          print('Verified standalone Zig & Nia Studio APK:',len(raw),'bytes')
+          PY
+      - name: Publish raw standalone preview APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > release-notes.md <<'NOTES'
+          Independent Android cartoon library preview, **Zig & Nia Studio 0.1.0**.
+
+          Download the raw `.apk` asset and install it on Android 8 or newer. It is a separate app with package `com.zignia.cartoonstudio` and its own signing identity, so Flow Automation Mobile can stay installed.
+
+          Includes the saved Zig/Nia character library, selectable prototype rigs and the prepared nine-second movement test. Local library import accepts separate images and JSON; the native export saves separate files in a new folder. No ads, coins or ZIP extraction are included.
+
+          Google Drive account connection and automatic script-to-cartoon generation are not implemented in this preview. The character parts and acting are prototypes requiring artistic review. No app-store publication is performed.
+
+          Build, lint, APK signature, bundled asset integrity and packaged browser checks passed. The initial software-emulator run was interrupted by an Android system startup crash; subsequent native testing also encountered WebView startup delays, so physical-phone operation is not yet verified.
+
+          Signing certificate SHA-256: `67173f76ed39af44892d0a0556cc3db179d92d476bb93bb9ffa843712ca6dbbc`.
+          NOTES
+          if gh release view zig-nia-studio-v0.1.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'This version already exists; refusing to overwrite it.'
+            exit 1
+          fi
+          gh release create zig-nia-studio-v0.1.0 ZigNiaStudio-0.1.0.apk ZigNiaStudio-0.1.0.apk.sha256 --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Zig & Nia Studio 0.1.0 — separate Android preview" --prerelease --latest=false --notes-file release-notes.md
+      - name: Remove temporary delivery files
+        if: always()
+        run: rm -f apk-blob.json ZigNiaStudio-0.1.0.apk ZigNiaStudio-0.1.0.apk.sha256 release-notes.md
