@@ -36,8 +36,8 @@ jobs:
           from pathlib import Path
           data=json.loads(Path('apk-blob.json').read_text())
           raw=base64.b64decode(data['content'])
-          expected='91af822cc904f7069185f2d044171adc4bd395b833985110ebe825cde2e5b319'
-          assert len(raw)==7413533 and hashlib.sha256(raw).hexdigest()==expected, 'APK differs from reviewed build'
+          expected='148d365abae356e66f59e924e9638e7c103ff28e25df8f5f3f853096d1ff74fc'
+          assert len(raw)==7414329 and hashlib.sha256(raw).hexdigest()==expected, 'APK differs from reviewed build'
           with zipfile.ZipFile(io.BytesIO(raw)) as archive:
               assert archive.testzip() is None
               assert 'classes.dex' in archive.namelist() and 'AndroidManifest.xml' in archive.namelist()
@@ -65,7 +65,7 @@ jobs:
 
           Google Drive account connection and automatic script-to-cartoon generation are not implemented in this preview. The character parts and acting are prototypes requiring artistic review. No app-store publication is performed.
 
-          Build, lint, APK signature, bundled asset integrity and packaged browser checks passed. The initial software-emulator run was interrupted by an Android system startup crash; subsequent native testing also encountered WebView startup delays, so physical-phone operation is not yet verified.
+          Build, lint, APK signature, bundled asset integrity and packaged browser checks passed. The native Android smoke test has not passed in this cloud software emulator: Android System UI encountered an ANR and System WebView renderer crashes/timeouts interrupted the checks. The preview now uses software rendering and handles a stopped renderer without deleting its library. Desktop browser checks do not verify operation on a physical phone.
 
           Signing certificate SHA-256: `67173f76ed39af44892d0a0556cc3db179d92d476bb93bb9ffa843712ca6dbbc`.
           NOTES
